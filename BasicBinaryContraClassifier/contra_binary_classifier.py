@@ -10,6 +10,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
 
+
 def preprocess_text(text):
     """Preprocess text by tokenizing, removing stopwords, and lemmatizing."""
     stop_words = set(stopwords.words('english'))
@@ -18,24 +19,27 @@ def preprocess_text(text):
     tokens = [lemmatizer.lemmatize(token) for token in tokens]
     return ' '.join(tokens)
 
+
 def convert_labels(df):
     """Convert labels from multi-class to binary class system."""
     df['label'] = df['label'].replace({1: 0, 2: 1})
 
+
 def tag_text(df):
-    """Create two versions of tagged text with 's1' always starting, and concatenate them as separate rows."""
+    """Create two versions of tagged text with 's1' and 's2' tags applied to tokens, and concatenate them as separate rows."""
     df_original = df.copy()
     df_switched = df.copy()
 
-    df_original['combined_text'] = df_original.apply(
-        lambda row: ' '.join(['s1-' + word for word in row['text1'].split()]) +
-                    ' ' + ' '.join(['s2-' + word for word in row['text2'].split()]), axis=1)
+    def apply_tags(text1, text2):
+        tagged_text1 = ' '.join(['s1-' + token for token in word_tokenize(text1)])
+        tagged_text2 = ' '.join(['s2-' + token for token in word_tokenize(text2)])
+        return tagged_text1 + ' ' + tagged_text2
 
-    df_switched['combined_text'] = df_switched.apply(
-        lambda row: ' '.join(['s1-' + word for word in row['text2'].split()]) +
-                    ' ' + ' '.join(['s2-' + word for word in row['text1'].split()]), axis=1)
+    df_original['combined_text'] = df_original.apply(lambda row: apply_tags(row['text1'], row['text2']), axis=1)
+    df_switched['combined_text'] = df_switched.apply(lambda row: apply_tags(row['text2'], row['text1']), axis=1)
 
     return pd.concat([df_original, df_switched], ignore_index=True)
+
 
 def evaluate_model(pipeline, X_train, y_train, X_test, y_test):
     """Train model and evaluate it on the test set."""
@@ -46,6 +50,7 @@ def evaluate_model(pipeline, X_train, y_train, X_test, y_test):
     recall = recall_score(y_test, predictions)
     f1 = f1_score(y_test, predictions)
     print(f"Accuracy: {accuracy:.2f}, Precision: {precision:.2f}, Recall: {recall:.2f}, F1 Score: {f1:.2f}")
+
 
 def make_predictions(nb_model, rf_model, sentence_pairs):
     results = []
@@ -66,18 +71,45 @@ def make_predictions(nb_model, rf_model, sentence_pairs):
 
     return results
 
+
 def main():
+    correct_nb_results, correct_rf_results = 0, 0
     contra_examples = [['I love dogs!', 'I hate dogs!'],
-     ['I really enjoy hiking on the weekends.', "I wouldn't say I have ever enjoyed hiking."],
-     ['Anthony is my best friend.', "I don't think I have a best friend."],
-     ['I have always recommended working while going to school.', 'Students should not have to work while taking classes in school'],
-     ['I support coal miners and keeping the coal industry strong!', 'Coal is in the past and we need to look to the future of renewable energy.'],
-     ["Bakersfield is the best place to raise a family and live life!", "I wouldn't live in Bakersfield, especiaally to grow a family in."],
-     ["I hate Italian food and it's not my favorite.", "I'm really craving some Italian food to eat right now."],
-     ["My last job was selling cars at the local Honda dealership.", "I have no experience selling cars."],
-     ["Teachers deserve to be paid better for the benefit they give to society.", "I think teachers make enough and don't deserve better pay."],
-     ["I like the taste of coke.", "I'm not a fan of coke, I prefer Pepsi."]
-     ]
+                       ['I really enjoy hiking on the weekends.', "I wouldn't say I have ever enjoyed hiking."],
+                       ['Anthony is my best friend.', "I don't think I have a best friend."],
+                       ['I have always recommended working while going to school.',
+                        'Students should not have to work while taking classes in school'],
+                       ['I support coal miners and keeping the coal industry strong!',
+                        'Coal is in the past and we need to look to the future of renewable energy.'],
+                       ["Bakersfield is the best place to raise a family and live life!",
+                        "I wouldn't live in Bakersfield, especiaally to grow a family in."],
+                       ["I hate Italian food and it's not my favorite.",
+                        "I'm really craving some Italian food to eat right now."],
+                       ["My last job was selling cars at the local Honda dealership.",
+                        "I have no experience selling cars."],
+                       ["Teachers deserve to be paid better for the benefit they give to society.",
+                        "I think teachers make enough and don't deserve better pay."],
+                       ["I like the taste of coke.", "I'm not a fan of coke, I prefer Pepsi."]
+                       ]
+
+    non_contra_examples = [['I love dogs!', 'I love animals!'],
+                       ['I really enjoyed the hike up to bishop peak last weekend.',
+                        "I would say I have always enjoyed hiking."],
+                       ['Anthony is my best friend.', "I have one best friend."],
+                       ['I have always recommended working while going to school.',
+                        'Students should work while taking classes in school to gain real world experience.'],
+                       ['I support coal miners and keeping the coal industry strong!',
+                        "Coal is reliable and we can't rely on unpredictable renewable energy."],
+                       ["Bakersfield is the best place to raise a family and live life!",
+                        "Bakersfield is cheap to live in and family oriented, making it great to raise my family in."],
+                       ["I hate Italian food and it's not my favorite.",
+                        "I really love eating Italian dishes like pasta and lasagna."],
+                       ["My last job was selling cars at the local Honda dealership.",
+                        "I remember selling a new Honda civic last month."],
+                       ["Teachers deserve to be paid better for the benefit they give to society.",
+                        "Teachers are really important to society and I hope they make more soon."],
+                       ["I like the taste of Coke.", "I'm a big fan of soda, especially Coke."]
+                       ]
 
     df = pd.read_json('data/MNLI/train1.jsonl', lines=True)
     validation_matched = pd.read_json('data/MNLI/train2.jsonl', lines=True)
@@ -89,6 +121,7 @@ def main():
 
     convert_labels(train)
     convert_labels(test)
+    print(train)
 
     nb_pipeline = Pipeline([
         ('vectorizer', CountVectorizer(preprocessor=preprocess_text)),
@@ -107,8 +140,11 @@ def main():
     evaluate_model(rf_pipeline, train['combined_text'], train['label'], test['combined_text'], test['label'])
 
     results = make_predictions(nb_pipeline, rf_pipeline, contra_examples)
+
     for result in results:
-        print(result)
+        correct_nb_results += result['Naive Bayes Prediction']
+        correct_rf_results += result['Random Forest Prediction']
+
 
 if __name__ == '__main__':
     main()
