@@ -129,6 +129,21 @@ def create_pipelines():
     return nb_pipeline, rf_pipeline
 
 
+def get_nb_feature_importances(nb_model, vectorizer):
+    feature_log_probs = nb_model.feature_log_prob_
+    feature_names = vectorizer.get_feature_names_out()
+    importance_df = pd.DataFrame(feature_log_probs.T, index=feature_names, columns=["Class 0", "Class 1"])
+    importance_df['Importance'] = importance_df.max(axis=1)
+    return importance_df.sort_values(by='Importance', ascending=False)
+
+
+def get_rf_feature_importances(rf_model, vectorizer):
+    feature_importances = rf_model.feature_importances_
+    feature_names = vectorizer.get_feature_names_out()
+    importance_df = pd.DataFrame({'Feature': feature_names, 'Importance': feature_importances})
+    return importance_df.sort_values(by='Importance', ascending=False)
+
+
 def main():
     contra_examples, non_contra_examples = example_contradictions()
     correct_nb_contra, correct_rf_contra = 0, 0
@@ -174,6 +189,15 @@ def main():
     print('Correct Random Forest Contra: ', correct_rf_contra / 10)
     print('Correct Naive Bayes Non-Contra: ', correct_nb_non / 10)
     print('Correct Random Forest Non-Contra: ', correct_rf_non / 10)
+
+    nb_feature_importances = get_nb_feature_importances(nb_pipeline.named_steps['classifier'], nb_pipeline.named_steps['vectorizer'])
+    print("Top features for Naive Bayes:")
+    print(nb_feature_importances.head(10))
+    print()
+
+    rf_feature_importances = get_rf_feature_importances(rf_pipeline.named_steps['classifier'], rf_pipeline.named_steps['vectorizer'])
+    print("Top features for Random Forest:")
+    print(rf_feature_importances.head(10))
 
 
 if __name__ == '__main__':
