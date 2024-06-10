@@ -7,8 +7,29 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
+import joblib
+import os
 
 lemmatizer = WordNetLemmatizer()
+
+
+def load_model_if_exists(model_name):
+    """Load a model if it exists, otherwise return None."""
+    if os.path.exists(model_name):
+        return joblib.load(model_name)
+    return None
+
+
+def evaluate_model(pipeline, X_train, y_train, X_test, y_test, model_name):
+    """Train model and evaluate it on the test set, then save the model."""
+    pipeline.fit(X_train, y_train)
+    joblib.dump(pipeline, model_name)  # Save the model
+    predictions = pipeline.predict(X_test)
+    accuracy = accuracy_score(y_test, predictions)
+    precision = precision_score(y_test, predictions)
+    recall = recall_score(y_test, predictions)
+    f1 = f1_score(y_test, predictions)
+    print(f"Accuracy: {accuracy:.2f}, Precision: {precision:.2f}, Recall: {recall:.2f}, F1 Score: {f1:.2f}")
 
 
 def example_contradictions():
@@ -70,18 +91,7 @@ def convert_labels(df):
     df['label'] = df['label'].replace({1: 0, 2: 1})
 
 
-def evaluate_model(pipeline, X_train, y_train, X_test, y_test):
-    """Train model and evaluate it on the test set."""
-    pipeline.fit(X_train, y_train)
-    predictions = pipeline.predict(X_test)
-    accuracy = accuracy_score(y_test, predictions)
-    precision = precision_score(y_test, predictions)
-    recall = recall_score(y_test, predictions)
-    f1 = f1_score(y_test, predictions)
-    print(f"Accuracy: {accuracy:.2f}, Precision: {precision:.2f}, Recall: {recall:.2f}, F1 Score: {f1:.2f}")
-
-
-def make_predictions(nb_model, rf_model, sentence_pairs):
+def make_predictions(nb_model, sentence_pairs):
     results = []
 
     for sentence1, sentence2 in sentence_pairs:
@@ -89,13 +99,12 @@ def make_predictions(nb_model, rf_model, sentence_pairs):
             apply_tags_and_process(sentence1, sentence2) + apply_tags_and_process(sentence2, sentence1))
 
         nb_prediction = nb_model.predict([combined_text])[0]
-        rf_prediction = rf_model.predict([combined_text])[0]
 
         results.append({
             "Sentence 1": sentence1,
             "Sentence 2": sentence2,
             "Naive Bayes Prediction": nb_prediction,
-            "Random Forest Prediction": rf_prediction
+            "Random Forest Prediction": None
         })
 
     return results
@@ -166,38 +175,46 @@ def main():
 
     nb_pipeline, rf_pipeline = create_pipelines()
 
-    print("Evaluating Naive Bayes on test set")
-    evaluate_model(nb_pipeline, train['combined_text'], train['label'], test['combined_text'], test['label'])
+    nb_model_name = 'nb_model.joblib'
+    # rf_model_name = 'rf_model.joblib'
 
-    print("Evaluating Random Forest on test set")
-    evaluate_model(rf_pipeline, train['combined_text'], train['label'], test['combined_text'], test['label'])
+    nb_pipeline = load_model_if_exists(nb_model_name) or nb_pipeline
+    # rf_pipeline = load_model_if_exists(rf_model_name) or rf_pipeline
 
-    results = make_predictions(nb_pipeline, rf_pipeline, contra_examples + non_contra_examples)
+    if not load_model_if_exists(nb_model_name):
+        print("Evaluating Naive Bayes on test set")
+        evaluate_model(nb_pipeline, train['combined_text'], train['label'], test['combined_text'], test['label'], nb_model_name)
+
+    # if not load_model_if_exists(rf_model_name):
+    #     print("Evaluating Random Forest on test set")
+    #     evaluate_model(rf_pipeline, train['combined_text'], train['label'], test['combined_text'], test['label'], rf_model_name)
+
+    results = make_predictions(nb_pipeline, contra_examples + non_contra_examples)
     for result in results[:11]:
         if result['Naive Bayes Prediction'] == 1:
             correct_nb_contra += 1
-        if result['Random Forest Prediction'] == 1:
-            correct_rf_contra += 1
+        # if result['Random Forest Prediction'] == 1:
+        #     correct_rf_contra += 1
 
     for result in results[11:]:
         if result['Naive Bayes Prediction'] == 0:
             correct_nb_non += 1
-        if result['Random Forest Prediction'] == 0:
-            correct_rf_non += 1
+        # if result['Random Forest Prediction'] == 0:
+        #     correct_rf_non += 1
 
     print('Correct Naive Bayes Contra: ', correct_nb_contra / 10)
-    print('Correct Random Forest Contra: ', correct_rf_contra / 10)
+    # print('Correct Random Forest Contra: ', correct_rf_contra / 10)
     print('Correct Naive Bayes Non-Contra: ', correct_nb_non / 10)
-    print('Correct Random Forest Non-Contra: ', correct_rf_non / 10)
+    # print('Correct Random Forest Non-Contra: ', correct_rf_non / 10)
 
     nb_feature_importances = get_nb_feature_importances(nb_pipeline.named_steps['classifier'], nb_pipeline.named_steps['vectorizer'])
     print("Top features for Naive Bayes:")
     print(nb_feature_importances.head(10))
     print()
 
-    rf_feature_importances = get_rf_feature_importances(rf_pipeline.named_steps['classifier'], rf_pipeline.named_steps['vectorizer'])
-    print("Top features for Random Forest:")
-    print(rf_feature_importances.head(10))
+    # rf_feature_importances = get_rf_feature_importances(rf_pipeline.named_steps['classifier'], rf_pipeline.named_steps['vectorizer'])
+    # print("Top features for Random Forest:")
+    # print(rf_feature_importances.head(10))
 
 
 if __name__ == '__main__':
